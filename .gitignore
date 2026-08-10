@@ -1,0 +1,15 @@
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+
+# Android/Gradle generated
+**/build/
+**/.gradle/
+
+# Machine-local Android SDK path
+StreamApp/local.properties
+
+# Logs
+*.log
