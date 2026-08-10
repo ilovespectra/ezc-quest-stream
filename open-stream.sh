@@ -2,13 +2,25 @@
 
 set -e
 
-if [ -z "$1" ]; then
-    echo "Usage: bash open-stream.sh <QUEST_IP>"
+# Auto-discover Quest IP from connected device
+DEVICE=$(adb devices | grep -w device | head -1 | awk '{print $1}')
+
+if [ -z "$DEVICE" ]; then
+    echo "❌ No Quest device found"
+    echo "Make sure your Quest is connected via USB and USB debugging is enabled"
     exit 1
 fi
 
-IP="$1"
-URL="http://$IP:8080/stream"
+echo "🔍 Discovering IP on device $DEVICE..."
+IP=$(adb -s "$DEVICE" shell ip route | grep -v default | awk '{print $9}' | head -1)
 
-echo "Opening $URL"
+if [ -z "$IP" ]; then
+    echo "❌ Could not determine Quest IP"
+    echo "Check that Quest has a network connection"
+    exit 1
+fi
+
+URL="http://$IP:8080/stream"
+echo "✅ Opening stream at $URL"
+sleep 1
 open "$URL"

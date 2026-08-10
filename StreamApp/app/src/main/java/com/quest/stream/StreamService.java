@@ -8,9 +8,7 @@ import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
-import android.graphics.Paint;
 import android.graphics.PixelFormat;
-import android.graphics.RectF;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
 import android.media.Image;
@@ -50,8 +48,6 @@ public class StreamService extends Service {
     private static final int NOTIFICATION_ID = 42;
     private static final int PORT = 8080;
     private static final String TAG = "QuestStreamService";
-    private static final int BADGE_MARGIN_X = 36;
-    private static final int BADGE_MARGIN_Y = 22;
 
     private static volatile int sharedResultCode = 0;
     private static volatile Intent sharedProjectionData;
@@ -67,6 +63,7 @@ public class StreamService extends Service {
     private ServerSocket serverSocket;
     private ExecutorService executor;
     private byte[] blackFrame;
+    private final AtomicLong lastCaptureRestartAtMs = new AtomicLong(0L);
 
     public static void setProjectionGrant(int resultCode, Intent data) {
         sharedResultCode = resultCode;
@@ -196,7 +193,7 @@ public class StreamService extends Service {
                 width,
                 height,
                 density,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC,
+            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                 imageReader.getSurface(),
                 null,
                 null
@@ -228,7 +225,6 @@ public class StreamService extends Service {
                 bitmap.copyPixelsFromBuffer(buffer);
 
                 Bitmap cropped = Bitmap.createBitmap(bitmap, 0, 0, image.getWidth(), image.getHeight());
-                drawLiveBadge(cropped);
                 ByteArrayOutputStream jpegStream = new ByteArrayOutputStream();
                 cropped.compress(Bitmap.CompressFormat.JPEG, 70, jpegStream);
                 latestJpeg.set(jpegStream.toByteArray());
@@ -302,6 +298,7 @@ public class StreamService extends Service {
                     // When headset sleeps or display is blank, keep stream alive with black frames.
                     latestJpeg.set(blackFrame);
                 }
+                attemptCaptureRestartIfStale(delta);
                 try {
                     Thread.sleep(200);
                 } catch (InterruptedException ignored) {
@@ -315,42 +312,10 @@ public class StreamService extends Service {
         Bitmap bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bmp);
         canvas.drawColor(Color.BLACK);
-        drawLiveBadge(bmp);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         bmp.compress(Bitmap.CompressFormat.JPEG, 70, out);
         bmp.recycle();
         return out.toByteArray();
-    }
-
-    private static void drawLiveBadge(Bitmap bitmap) {
-        Canvas canvas = new Canvas(bitmap);
-        float scale = Math.max(1f, Math.min(bitmap.getWidth(), bitmap.getHeight()) / 1100f);
-        float dotRadius = 12f * scale;
-        float pillHeight = 34f * scale;
-        float pillWidth = 112f * scale;
-        float marginX = BADGE_MARGIN_X * scale;
-        float marginY = BADGE_MARGIN_Y * scale;
-
-        float right = bitmap.getWidth() - marginX;
-        float top = marginY;
-        float left = right - pillWidth;
-        float bottom = top + pillHeight;
-
-        Paint pillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        pillPaint.setColor(Color.argb(170, 10, 15, 26));
-        canvas.drawRoundRect(new RectF(left, top, right, bottom), 18f * scale, 18f * scale, pillPaint);
-
-        Paint dotPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        dotPaint.setColor(Color.rgb(234, 56, 76));
-        float dotCenterX = left + (16f * scale);
-        float dotCenterY = top + (pillHeight / 2f);
-        canvas.drawCircle(dotCenterX, dotCenterY, dotRadius, dotPaint);
-
-        Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        textPaint.setColor(Color.WHITE);
-        textPaint.setTextSize(18f * scale);
-        textPaint.setFakeBoldText(true);
-        canvas.drawText("LIVE", left + (34f * scale), top + (22f * scale), textPaint);
     }
 
     private void startHttpServer() {
@@ -400,20 +365,34 @@ public class StreamService extends Service {
                     + "<meta name='viewport' content='width=device-width, initial-scale=1'>"
                     + "<title>EZC Quest Stream</title>"
                     + "<style>"
-                    + "body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:linear-gradient(140deg,#0f1422,#111827,#1d2535);color:#ecf2ff;}"
-                    + ".wrap{max-width:960px;margin:28px auto;padding:18px;}"
-                    + ".card{background:rgba(8,12,20,.72);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.15);border-radius:22px;padding:20px;box-shadow:0 24px 54px rgba(0,0,0,.35);}"
-                    + "h1{margin:0 0 6px;font-size:32px;}"
-                    + "p{margin:6px 0 0;color:#b9c5df;}"
-                    + ".slogan{font-size:18px;color:#d7e3ff;margin-bottom:14px;}"
-                    + ".url{margin:14px 0;padding:12px;border-radius:14px;background:#0f1729;border:1px solid #2a3753;word-break:break-all;}"
-                    + "img{display:block;width:100%;height:auto;border-radius:16px;border:1px solid rgba(255,255,255,.18);box-shadow:0 16px 36px rgba(0,0,0,.35);transition:transform .18s ease,box-shadow .18s ease;}"
-                    + "img:hover{transform:translateY(-2px);box-shadow:0 22px 44px rgba(0,0,0,.42);}"
+                    + "body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:linear-gradient(145deg,#0b1220,#0f1a31,#13243f);color:#ecf2ff;}"
+                    + ".wrap{max-width:1200px;margin:18px auto;padding:16px;}"
+                    + ".card{background:rgba(6,10,18,.72);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:16px;box-shadow:0 22px 48px rgba(0,0,0,.38);}"
+                    + "h1{margin:0 0 4px;font-size:28px;}"
+                    + "p{margin:4px 0 0;color:#b9c5df;}"
+                    + ".slogan{font-size:16px;color:#d7e3ff;margin-bottom:12px;}"
+                    + ".toolbar{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 14px;}"
+                    + "button{border:1px solid #304261;background:#15243f;color:#e9f0ff;border-radius:999px;padding:8px 12px;font-weight:600;cursor:pointer;}"
+                    + "button:hover{background:#1d3257;}"
+                    + ".url{margin:0 0 12px;padding:10px;border-radius:12px;background:#0d172a;border:1px solid #273a5f;word-break:break-all;}"
+                    + ".stage{display:flex;justify-content:center;align-items:center;min-height:55vh;background:#03070f;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:8px;}"
+                    + "img{display:block;width:100%;max-width:100%;height:auto;border-radius:10px;border:1px solid rgba(255,255,255,.14);box-shadow:0 12px 30px rgba(0,0,0,.35);}"
+                    + ".w1080{max-width:1920px}.w720{max-width:1280px}.w540{max-width:960px}"
                     + "</style></head><body><div class='wrap'><div class='card'>"
                     + "<h1>EZC Quest Stream</h1><p class='slogan'>Easy, see?</p>"
                     + "<p>Built to simplify Meta Quest streaming to Mac without Meta Horizon or Android Developer Hub.</p>"
                     + "<div class='url'>http://" + ip + ":" + PORT + "/stream</div>"
-                    + "<img src='/stream' alt='Live stream preview'></div></div></body></html>";
+                    + "<div class='toolbar'>"
+                    + "<button onclick=\"setSize('w1080')\">1920</button>"
+                    + "<button onclick=\"setSize('w720')\">1280</button>"
+                    + "<button onclick=\"setSize('w540')\">960</button>"
+                    + "<button onclick=\"toggleFullscreen()\">Fullscreen</button>"
+                    + "</div>"
+                    + "<div id='stage' class='stage w1080'><img id='feed' src='/stream' alt='Live stream preview'></div>"
+                    + "<script>"
+                    + "function setSize(c){const s=document.getElementById('stage');s.classList.remove('w1080','w720','w540');s.classList.add(c);}"
+                    + "function toggleFullscreen(){const el=document.getElementById('stage');if(!document.fullscreenElement){el.requestFullscreen&&el.requestFullscreen();}else{document.exitFullscreen&&document.exitFullscreen();}}"
+                    + "</script></div></div></body></html>";
                 byte[] bytes = body.getBytes();
                 out.write(("HTTP/1.1 200 OK\r\n"
                         + "Content-Type: text/html; charset=utf-8\r\n"
@@ -486,6 +465,25 @@ public class StreamService extends Service {
         sharedProjectionData = null;
         sharedResultCode = 0;
         stopForeground(STOP_FOREGROUND_REMOVE);
+    }
+
+    private void attemptCaptureRestartIfStale(long deltaMs) {
+        if (mediaProjection == null || deltaMs < 2500) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        long lastRestart = lastCaptureRestartAtMs.get();
+        if (now - lastRestart < 4000) {
+            return;
+        }
+        if (lastCaptureRestartAtMs.compareAndSet(lastRestart, now)) {
+            Log.w(TAG, "No fresh frames; restarting capture pipeline");
+            try {
+                startCapture();
+            } catch (Throwable t) {
+                Log.e(TAG, "Capture restart failed", t);
+            }
+        }
     }
 
     private void createChannel() {

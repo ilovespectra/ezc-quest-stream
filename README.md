@@ -16,7 +16,7 @@ It was built to simplify Quest streaming by removing the need for Meta Horizon t
 ## Download
 
 ```bash
-git clone https://github.com/ilovespectra/ezc-quest-stream.git
+git clone https://github.com/ilovespectra/ezc-quest-stream/tree/main
 cd ezc-quest-stream
 ```
 
@@ -30,18 +30,16 @@ bash install.sh
 Then on Quest:
 
 1. Open EZC Quest Stream.
-2. Tap Start Stream.
+2. Tap the button to start streaming.
 3. Tap Allow on the capture prompt.
 
-On Mac:
+On Mac (auto-discovers Quest IP):
 
 ```bash
-bash open-stream.sh <QUEST_IP>
+bash open-stream.sh
 ```
 
-Or open directly:
-
-`http://<QUEST_IP>:8080/stream`
+Or open directly in browser after starting the stream on Quest.
 
 ## Walkthrough
 

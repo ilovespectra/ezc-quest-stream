@@ -76,14 +76,13 @@ echo "[4/5] Waiting for app to be ready..."
 sleep 2
 
 echo ""
+echo ""
 echo "[5/5] Getting device IP..."
 
 IP=$(adb -s "$DEVICE_SERIAL" shell ip route | grep -v default | awk '{print $9}' | head -1)
 
 if [ -z "$IP" ]; then
-    IP="<QUEST_IP>"
-    echo "⚠️  Could not determine Quest IP automatically"
-    echo "Check the app's display for IP address"
+    IP="(check app display)"
 fi
 
 echo ""
@@ -95,20 +94,20 @@ echo "NEXT STEPS:"
 echo ""
 echo "1. On the Quest headset:"
 echo "   - Open 'EZC Quest Stream'"
-echo "   - Tap 'Start Stream'"
-echo "   - Grant screen capture permission"
-echo "   - Wait for streaming status in the app"
+echo "   - Tap the button to start streaming"
+echo "   - Tap 'Allow' on the capture permission prompt"
 echo ""
-echo "2. On your Mac, view the stream:"
-if [ "$IP" != "<QUEST_IP>" ]; then
-    echo "   bash /Users/tanny/quest/open-stream.sh $IP"
-    echo "   or open http://$IP:8080/stream"
+echo "2. On your Mac, automatically open the stream:"
+echo "   bash /Users/tanny/quest/open-stream.sh"
+echo ""
+echo "   Or manually open:"
+if [ "$IP" != "(check app display)" ]; then
+    echo "   http://$IP:8080/stream"
 else
-    echo "   bash /Users/tanny/quest/open-stream.sh QUEST_IP"
-    echo "   (Replace QUEST_IP with the address shown in the app)"
+    echo "   http://<QUEST_IP>:8080/stream"
 fi
 echo ""
 echo "3. You can now remove the Quest and set it down."
 echo ""
-echo "To stop streaming: Close the app on the Quest or tap 'Stop Stream'"
+echo "To stop: Tap the button in the app"
 echo ""

@@ -18,9 +18,11 @@ public class MainActivity extends AppCompatActivity {
     private static final int PERMISSION_CODE = 1001;
     private MediaProjectionManager projectionManager;
     private TextView statusText;
-    private Button startBtn;
+    private Button toggleBtn;
+    private TextView liveChip;
     private ActivityResultLauncher<String> notificationPermissionLauncher;
     private boolean captureRequestInFlight = false;
+    private boolean isStreaming = false;
     private static final String TAG = "QuestStreamMain";
 
     @Override
@@ -30,9 +32,9 @@ public class MainActivity extends AppCompatActivity {
 
         projectionManager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
 
-        startBtn = findViewById(R.id.btn_start);
-        Button stopBtn = findViewById(R.id.btn_stop);
+        toggleBtn = findViewById(R.id.btn_toggle);
         statusText = findViewById(R.id.status);
+        liveChip = findViewById(R.id.chip_live);
 
         notificationPermissionLauncher = registerForActivityResult(
                 new ActivityResultContracts.RequestPermission(),
@@ -46,19 +48,30 @@ public class MainActivity extends AppCompatActivity {
 
         String ip = StreamService.getLocalIpAddress();
         statusText.setText("Ready to stream\nOpen on Mac: http://" + ip + ":8080/stream");
+        updateButtonState();
 
-        startBtn.setOnClickListener(v -> requestCapturePermission("Start clicked"));
+        toggleBtn.setOnClickListener(v -> handleToggleClick());
+    }
 
-        stopBtn.setOnClickListener(v -> {
-            Intent serviceIntent = new Intent(this, StreamService.class);
-            serviceIntent.setAction(StreamService.ACTION_STOP_STREAM);
-            startService(serviceIntent);
-            Log.i(TAG, "Stop clicked; stop intent sent");
-            statusText.setText("Stopped\nPress Start Stream to go live again.");
-            captureRequestInFlight = false;
-            startBtn.setEnabled(true);
-        });
+    private void handleToggleClick() {
+        if (isStreaming) {
+            // Stop streaming
+            stopStreaming();
+        } else {
+            // Start streaming
+            requestCapturePermission("Toggle clicked");
+        }
+    }
 
+    private void stopStreaming() {
+        Intent serviceIntent = new Intent(this, StreamService.class);
+        serviceIntent.setAction(StreamService.ACTION_STOP_STREAM);
+        startService(serviceIntent);
+        Log.i(TAG, "Stop clicked; stop intent sent");
+
+        isStreaming = false;
+        updateButtonState();
+        statusText.setText("Stopped\nTap button to go live again.");
     }
 
     private void requestCapturePermission(String reason) {
@@ -67,10 +80,27 @@ public class MainActivity extends AppCompatActivity {
         }
         captureRequestInFlight = true;
         Log.i(TAG, reason + "; requesting MediaProjection permission");
-        startBtn.setEnabled(false);
+        updateButtonState();
         statusText.setText("Waiting for permission...\nApprove in headset to go live.");
         Intent intent = projectionManager.createScreenCaptureIntent();
         startActivityForResult(intent, PERMISSION_CODE);
+    }
+
+    private void updateButtonState() {
+        if (isStreaming) {
+            toggleBtn.setText("Stop Streaming");
+            toggleBtn.setBackground(getDrawable(R.drawable.bg_button_stop));
+            toggleBtn.setTextColor(getColor(android.R.color.white));
+            liveChip.setText("LIVE");
+            liveChip.setBackground(getDrawable(R.drawable.bg_live_chip));
+        } else {
+            toggleBtn.setText("Start Stream");
+            toggleBtn.setBackground(getDrawable(R.drawable.bg_button_primary));
+            toggleBtn.setTextColor(getColor(android.R.color.white));
+            liveChip.setText("READY");
+            liveChip.setBackground(getDrawable(R.drawable.bg_chip_idle));
+        }
+        toggleBtn.setEnabled(!captureRequestInFlight);
     }
 
     @Override
@@ -88,16 +118,19 @@ public class MainActivity extends AppCompatActivity {
                 startService(serviceIntent);
             }
 
-            String ip = StreamService.getLocalIpAddress();
-            statusText.setText("Streaming live\nOpen on Mac: http://" + ip + ":8080/stream");
+            isStreaming = true;
             captureRequestInFlight = false;
+            updateButtonState();
+
+            String ip = StreamService.getLocalIpAddress();
+            statusText.setText("Streaming live 🔴\nOpen on Mac: http://" + ip + ":8080/stream");
             Log.i(TAG, "Service start intent sent; status set to streaming");
             return;
         }
 
-        statusText.setText("Permission denied or canceled\nTap Start Stream and allow capture.");
+        statusText.setText("Permission denied or canceled\nTap button to try again.");
         captureRequestInFlight = false;
-        startBtn.setEnabled(true);
+        updateButtonState();
         Log.w(TAG, "Permission denied/canceled or unexpected result");
     }
 }

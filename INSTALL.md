@@ -28,11 +28,13 @@ bash install.sh
 
 ## 5) Open stream on Mac
 
+The script auto-discovers your Quest's IP:
+
 ```bash
-bash open-stream.sh <QUEST_IP>
+bash open-stream.sh
 ```
 
-Direct endpoints:
+Direct endpoints (if manual):
 
 - http://<QUEST_IP>:8080
 - http://<QUEST_IP>:8080/stream
