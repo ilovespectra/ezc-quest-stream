@@ -27,6 +27,7 @@ import androidx.core.app.NotificationCompat;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.ServerSocket;
@@ -55,6 +56,8 @@ public class StreamService extends Service {
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicReference<byte[]> latestJpeg = new AtomicReference<>();
     private final AtomicLong lastFrameAtMs = new AtomicLong(0L);
+    private final AtomicLong streamEpoch = new AtomicLong(0L);
+    private final AtomicLong lastRecoverAttemptAtMs = new AtomicLong(0L);
 
     private MediaProjection mediaProjection;
     private MediaProjectionManager projectionManager;
@@ -186,6 +189,7 @@ public class StreamService extends Service {
         ensureBlackFallbackFrame(width, height);
         latestJpeg.set(blackFrame);
         lastFrameAtMs.set(System.currentTimeMillis());
+        streamEpoch.incrementAndGet();
 
         imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2);
         virtualDisplay = mediaProjection.createVirtualDisplay(
@@ -275,8 +279,6 @@ public class StreamService extends Service {
         if (mediaProjection != null) {
             mediaProjection = null;
         }
-        sharedProjectionData = null;
-        sharedResultCode = 0;
     }
 
     private void stopDisplayOnly() {
@@ -299,6 +301,7 @@ public class StreamService extends Service {
                     latestJpeg.set(blackFrame);
                 }
                 attemptCaptureRestartIfStale(delta);
+                attemptProjectionRecovery(delta);
                 try {
                     Thread.sleep(200);
                 } catch (InterruptedException ignored) {
@@ -359,6 +362,8 @@ public class StreamService extends Service {
                     out.flush();
                     Thread.sleep(50);
                 }
+            } else if (requestLine.contains("GET /status")) {
+                writeStatusJson(out);
             } else {
                 String ip = getLocalIpAddress();
                 String body = "<!doctype html><html><head><meta charset='utf-8'>"
@@ -371,12 +376,16 @@ public class StreamService extends Service {
                     + "h1{margin:0 0 4px;font-size:28px;}"
                     + "p{margin:4px 0 0;color:#b9c5df;}"
                     + ".slogan{font-size:16px;color:#d7e3ff;margin-bottom:12px;}"
-                    + ".toolbar{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 14px;}"
+                    + ".toolbar{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 14px;align-items:center;}"
                     + "button{border:1px solid #304261;background:#15243f;color:#e9f0ff;border-radius:999px;padding:8px 12px;font-weight:600;cursor:pointer;}"
                     + "button:hover{background:#1d3257;}"
+                    + ".active{background:#2b4c80;border-color:#4f78bf;}"
                     + ".url{margin:0 0 12px;padding:10px;border-radius:12px;background:#0d172a;border:1px solid #273a5f;word-break:break-all;}"
-                    + ".stage{display:flex;justify-content:center;align-items:center;min-height:55vh;background:#03070f;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:8px;}"
-                    + "img{display:block;width:100%;max-width:100%;height:auto;border-radius:10px;border:1px solid rgba(255,255,255,.14);box-shadow:0 12px 30px rgba(0,0,0,.35);}"
+                    + ".status{font-size:13px;color:#9eb1d6;margin-left:auto;}"
+                    + ".stage{display:flex;justify-content:center;align-items:center;height:70vh;background:#03070f;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:8px;overflow:hidden;}"
+                    + "img{display:block;width:100%;height:100%;border-radius:10px;border:1px solid rgba(255,255,255,.14);box-shadow:0 12px 30px rgba(0,0,0,.35);background:#000;}"
+                    + ".fit-all img{object-fit:contain;}"
+                    + ".fit-crop img{object-fit:cover;}"
                     + ".w1080{max-width:1920px}.w720{max-width:1280px}.w540{max-width:960px}"
                     + "</style></head><body><div class='wrap'><div class='card'>"
                     + "<h1>EZC Quest Stream</h1><p class='slogan'>Easy, see?</p>"
@@ -386,12 +395,20 @@ public class StreamService extends Service {
                     + "<button onclick=\"setSize('w1080')\">1920</button>"
                     + "<button onclick=\"setSize('w720')\">1280</button>"
                     + "<button onclick=\"setSize('w540')\">960</button>"
-                    + "<button onclick=\"toggleFullscreen()\">Fullscreen</button>"
+                    + "<button id='fitCropBtn' class='active' onclick=\"setFit('crop')\">Crop</button>"
+                    + "<button id='fitAllBtn' onclick=\"setFit('all')\">All</button>"
+                    + "<button title='Fullscreen' onclick=\"toggleFullscreen()\">[ ]</button>"
+                    + "<span id='statusText' class='status'>Connecting...</span>"
                     + "</div>"
-                    + "<div id='stage' class='stage w1080'><img id='feed' src='/stream' alt='Live stream preview'></div>"
+                    + "<div id='stage' class='stage w1080 fit-crop'><img id='feed' src='/stream' alt='Live stream preview'></div>"
                     + "<script>"
                     + "function setSize(c){const s=document.getElementById('stage');s.classList.remove('w1080','w720','w540');s.classList.add(c);}"
+                    + "function setFit(mode){const s=document.getElementById('stage');const c=document.getElementById('fitCropBtn');const a=document.getElementById('fitAllBtn');if(mode==='all'){s.classList.remove('fit-crop');s.classList.add('fit-all');a.classList.add('active');c.classList.remove('active');}else{s.classList.remove('fit-all');s.classList.add('fit-crop');c.classList.add('active');a.classList.remove('active');}}"
                     + "function toggleFullscreen(){const el=document.getElementById('stage');if(!document.fullscreenElement){el.requestFullscreen&&el.requestFullscreen();}else{document.exitFullscreen&&document.exitFullscreen();}}"
+                    + "let lastEpoch=-1;"
+                    + "function refreshFeed(){const img=document.getElementById('feed');img.src='/stream?ts='+Date.now();}"
+                    + "async function pollStatus(){try{const r=await fetch('/status?ts='+Date.now(),{cache:'no-store'});const s=await r.json();document.getElementById('statusText').textContent=s.state==='running'?'Live':'Reconnecting';if(lastEpoch!==-1&&s.epoch!==lastEpoch){refreshFeed();}lastEpoch=s.epoch;}catch(e){document.getElementById('statusText').textContent='Reconnecting';}}"
+                    + "setInterval(pollStatus,1200);pollStatus();"
                     + "</script></div></div></body></html>";
                 byte[] bytes = body.getBytes();
                 out.write(("HTTP/1.1 200 OK\r\n"
@@ -484,6 +501,37 @@ public class StreamService extends Service {
                 Log.e(TAG, "Capture restart failed", t);
             }
         }
+    }
+
+    private void attemptProjectionRecovery(long deltaMs) {
+        if (!running.get() || mediaProjection != null || !hasProjectionGrant() || deltaMs < 1200) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        long lastAttempt = lastRecoverAttemptAtMs.get();
+        if (now - lastAttempt < 2500) {
+            return;
+        }
+        if (lastRecoverAttemptAtMs.compareAndSet(lastAttempt, now)) {
+            Log.i(TAG, "Attempting projection recovery from cached grant");
+            if (initializeProjectionFromGrant()) {
+                startCapture();
+            }
+        }
+    }
+
+    private void writeStatusJson(OutputStream out) throws IOException {
+        long ageMs = Math.max(0L, System.currentTimeMillis() - lastFrameAtMs.get());
+        String state = (running.get() && ageMs < 2500) ? "running" : "recovering";
+        String json = "{\"state\":\"" + state + "\",\"epoch\":" + streamEpoch.get() + ",\"ageMs\":" + ageMs + "}";
+        byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
+        out.write(("HTTP/1.1 200 OK\r\n"
+                + "Content-Type: application/json; charset=utf-8\r\n"
+                + "Cache-Control: no-store\r\n"
+                + "Content-Length: " + bytes.length + "\r\n"
+                + "Connection: close\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+        out.write(bytes);
+        out.flush();
     }
 
     private void createChannel() {
