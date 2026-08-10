@@ -69,7 +69,7 @@
                 android:layout_height="wrap_content"
                 android:alpha="0.8"
                 android:fontFamily="sans-serif"
-                android:text="/stream"
+                android:text="viewer: /"
                 android:textColor="@color/text_subtle"
                 android:textSize="13sp" />
         </LinearLayout>

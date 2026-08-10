@@ -47,7 +47,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         String ip = StreamService.getLocalIpAddress();
-        statusText.setText("Ready to stream\nOpen on Mac: http://" + ip + ":8080/stream");
+        statusText.setText("Ready to stream\nOpen on Mac: http://" + ip + ":8080");
         updateButtonState();
 
         toggleBtn.setOnClickListener(v -> handleToggleClick());
@@ -123,7 +123,7 @@ public class MainActivity extends AppCompatActivity {
             updateButtonState();
 
             String ip = StreamService.getLocalIpAddress();
-            statusText.setText("Streaming live 🔴\nOpen on Mac: http://" + ip + ":8080/stream");
+            statusText.setText("Streaming live 🔴\nViewer: http://" + ip + ":8080");
             Log.i(TAG, "Service start intent sent; status set to streaming");
             return;
         }

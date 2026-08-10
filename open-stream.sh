@@ -20,7 +20,7 @@ if [ -z "$IP" ]; then
     exit 1
 fi
 
-URL="http://$IP:8080/stream"
+URL="http://$IP:8080"
 echo "✅ Opening stream at $URL"
 sleep 1
 open "$URL"

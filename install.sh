@@ -102,9 +102,11 @@ echo "   bash /Users/tanny/quest/open-stream.sh"
 echo ""
 echo "   Or manually open:"
 if [ "$IP" != "(check app display)" ]; then
-    echo "   http://$IP:8080/stream"
+    echo "   http://$IP:8080"
+    echo "   (Raw MJPEG endpoint: http://$IP:8080/stream)"
 else
-    echo "   http://<QUEST_IP>:8080/stream"
+    echo "   http://<QUEST_IP>:8080"
+    echo "   (Raw MJPEG endpoint: http://<QUEST_IP>:8080/stream)"
 fi
 echo ""
 echo "3. You can now remove the Quest and set it down."

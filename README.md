@@ -39,7 +39,9 @@ On Mac (auto-discovers Quest IP):
 bash open-stream.sh
 ```
 
-Or open directly in browser after starting the stream on Quest.
+Or open directly in browser after starting the stream on Quest: `http://<QUEST_IP>:8080`
+
+Raw feed endpoint (for VLC/mpv tools): `http://<QUEST_IP>:8080/stream`
 
 ## Walkthrough
 
