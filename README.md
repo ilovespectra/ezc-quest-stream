@@ -66,6 +66,10 @@ Raw feed endpoint (for VLC/mpv tools): `http://<QUEST_IP>:8080/stream`
 
 ## Notes
 
+## Legal
+- [Terms of Service](TOC.md)
+- [Privacy Policy](Privacy.md)
+
 - Reinstalling the APK stops the running service. Launch and allow again after each reinstall.
 - If Quest sleeps, stream may temporarily go black and then auto-resume on wake.
 - Quest and Mac must be on the same network for direct LAN streaming.
