@@ -99,7 +99,5 @@ You agree to comply with all applicable local, national, and international laws 
 18. Contact Information
 For questions about these Terms, please contact us at:
 
-Email: [Your Email Address]
-
-Website: [Your Website URL]
+Email: info@balkanbiskits.si
 
